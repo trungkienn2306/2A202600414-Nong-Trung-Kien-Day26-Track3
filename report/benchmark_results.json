@@ -1,0 +1,108 @@
+{
+  "iterations": {
+    "repository": 100,
+    "mcp_client": 30
+  },
+  "database": "E:\\LabAIThucChien\\2A202600414-Nong-Trung-Kien-Day26-Track3\\data\\benchmark.sqlite3",
+  "results": [
+    {
+      "label": "repository.search filtered ordered limit=10",
+      "iterations": 100,
+      "total_ms": 80.398,
+      "mean_ms": 0.804,
+      "median_ms": 0.617,
+      "min_ms": 0.476,
+      "max_ms": 3.066,
+      "p95_ms": 2.416,
+      "ops_per_second": 1243.81
+    },
+    {
+      "label": "repository.aggregate avg(score) group_by cohort",
+      "iterations": 100,
+      "total_ms": 126.345,
+      "mean_ms": 1.263,
+      "median_ms": 0.935,
+      "min_ms": 0.723,
+      "max_ms": 5.917,
+      "p95_ms": 2.91,
+      "ops_per_second": 791.48
+    },
+    {
+      "label": "repository.schema full database",
+      "iterations": 100,
+      "total_ms": 199.396,
+      "mean_ms": 1.994,
+      "median_ms": 1.256,
+      "min_ms": 0.816,
+      "max_ms": 31.446,
+      "p95_ms": 4.399,
+      "ops_per_second": 501.52
+    },
+    {
+      "label": "repository.schema students table",
+      "iterations": 100,
+      "total_ms": 34.563,
+      "mean_ms": 0.346,
+      "median_ms": 0.281,
+      "min_ms": 0.212,
+      "max_ms": 2.347,
+      "p95_ms": 0.419,
+      "ops_per_second": 2893.25
+    },
+    {
+      "label": "repository.insert student",
+      "iterations": 30,
+      "total_ms": 185.116,
+      "mean_ms": 6.171,
+      "median_ms": 5.813,
+      "min_ms": 5.162,
+      "max_ms": 8.407,
+      "p95_ms": 8.263,
+      "ops_per_second": 162.06
+    },
+    {
+      "label": "mcp.in_process.client list_tools",
+      "iterations": 30,
+      "total_ms": 17.243,
+      "mean_ms": 0.575,
+      "median_ms": 0.495,
+      "min_ms": 0.371,
+      "max_ms": 2.468,
+      "p95_ms": 0.989,
+      "ops_per_second": 1739.89
+    },
+    {
+      "label": "mcp.in_process.client read schema://database",
+      "iterations": 30,
+      "total_ms": 88.557,
+      "mean_ms": 2.952,
+      "median_ms": 2.437,
+      "min_ms": 1.594,
+      "max_ms": 8.906,
+      "p95_ms": 6.457,
+      "ops_per_second": 338.77
+    },
+    {
+      "label": "mcp.in_process.client call search",
+      "iterations": 30,
+      "total_ms": 96.757,
+      "mean_ms": 3.225,
+      "median_ms": 3.081,
+      "min_ms": 2.38,
+      "max_ms": 4.936,
+      "p95_ms": 4.107,
+      "ops_per_second": 310.05
+    },
+    {
+      "label": "mcp.in_process.client call aggregate",
+      "iterations": 30,
+      "total_ms": 100.872,
+      "mean_ms": 3.362,
+      "median_ms": 3.327,
+      "min_ms": 2.373,
+      "max_ms": 5.023,
+      "p95_ms": 4.776,
+      "ops_per_second": 297.41
+    }
+  ]
+}
