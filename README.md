@@ -1,13 +1,13 @@
 # Day 26 Track 3 - FastMCP Database Server
 
-This submission implements a FastMCP server that exposes a reproducible SQLite database through MCP tools and resources.
+This submission implements a FastMCP server that exposes reproducible SQLite and PostgreSQL databases through MCP tools and resources.
 
 ## Features
 
 - FastMCP server with stdio transport by default.
 - Optional authenticated HTTP/SSE transport using bearer token auth.
-- Reproducible SQLite database with `students`, `courses`, and `enrollments` tables.
-- Shared repository interface with a working SQLite adapter and PostgreSQL-ready adapter boundary.
+- Reproducible SQLite and PostgreSQL databases with `students`, `courses`, and `enrollments` tables.
+- Shared repository interface with working SQLite and PostgreSQL adapters.
 - Required MCP tools:
   - `search`
   - `insert`
@@ -24,17 +24,20 @@ This submission implements a FastMCP server that exposes a reproducible SQLite d
 src/
   __init__.py
   db.py              # SQLite repository and safe SQL execution
-  init_db.py         # deterministic schema and seed data
+  init_db.py         # deterministic SQLite schema and seed data
+  init_postgres.py   # deterministic PostgreSQL schema and seed data
   mcp_server.py      # FastMCP tools/resources/transports
-  repository.py      # shared repository interface and PostgreSQL boundary
+  repository.py      # shared repository interface and PostgreSQL adapter
   validation.py      # input validation and allowed operators/metrics
 tests/
   conftest.py
   test_mcp_server.py
+  test_postgres_repository.py
   test_repository.py
 client_demo.py       # FastMCP client demo for success/failure cases
 verify_mcp.py        # FastMCP in-memory client discovery and tool calls
 verify_http_auth.py  # authenticated HTTP transport verification client
+verify_postgres.py   # live PostgreSQL repository verification
 requirements.txt
 Rubric.md
 Tips.md
@@ -50,7 +53,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Initialize the database:
+Initialize the default SQLite database:
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.init_db
@@ -62,11 +65,27 @@ Expected output:
 Initialized SQLite database at ...\data\lab.sqlite3
 ```
 
-## Run the MCP Server
-
-Default stdio transport:
+Optional PostgreSQL bonus setup with Docker:
 
 ```powershell
+docker run --name day26-postgres-lab -e POSTGRES_USER=labuser -e POSTGRES_PASSWORD=labpass -e POSTGRES_DB=labdb -p 55432:5432 -d postgres:16
+$env:POSTGRES_DSN = "postgresql://labuser:labpass@127.0.0.1:55432/labdb"
+.\.venv\Scripts\python.exe -m src.init_postgres
+.\.venv\Scripts\python.exe verify_postgres.py
+```
+
+## Run the MCP Server
+
+Default stdio transport with SQLite:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.mcp_server
+```
+
+Stdio transport with PostgreSQL:
+
+```powershell
+$env:POSTGRES_DSN = "postgresql://labuser:labpass@127.0.0.1:55432/labdb"
 .\.venv\Scripts\python.exe -m src.mcp_server
 ```
 
@@ -195,10 +214,23 @@ Run unit/integration tests:
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Verified result in this environment:
+Verified default result in this environment:
 
 ```text
-15 passed in 2.13s
+20 passed in 3.66s
+```
+
+Run live PostgreSQL integration tests after setting `POSTGRES_DSN`:
+
+```powershell
+$env:POSTGRES_DSN = "postgresql://labuser:labpass@127.0.0.1:55432/labdb"
+.\.venv\Scripts\python.exe -m pytest tests\test_postgres_repository.py -q
+```
+
+Verified PostgreSQL result:
+
+```text
+5 passed in 1.31s
 ```
 
 Run coverage:
@@ -210,7 +242,7 @@ Run coverage:
 Verified result in this environment:
 
 ```text
-TOTAL 81%
+TOTAL 85%
 ```
 
 Run MCP client demo:
@@ -232,14 +264,22 @@ The demo uses `fastmcp.Client` against the local FastMCP server object and print
 Run code quality checks:
 
 ```powershell
-.\.venv\Scripts\python.exe -m black --check src tests client_demo.py verify_mcp.py verify_http_auth.py
-.\.venv\Scripts\python.exe -m ruff check src tests client_demo.py verify_mcp.py verify_http_auth.py
-.\.venv\Scripts\python.exe -m mypy src client_demo.py verify_mcp.py verify_http_auth.py
+.\.venv\Scripts\python.exe -m black --check src tests client_demo.py verify_mcp.py verify_http_auth.py verify_postgres.py
+.\.venv\Scripts\python.exe -m ruff check src tests client_demo.py verify_mcp.py verify_http_auth.py verify_postgres.py
+.\.venv\Scripts\python.exe -m mypy src client_demo.py verify_mcp.py verify_http_auth.py verify_postgres.py
 ```
 
-Run MCP discovery and tool-call verification:
+Run MCP discovery and tool-call verification with SQLite:
 
 ```powershell
+.\.venv\Scripts\python.exe verify_mcp.py
+```
+
+Run the same MCP verification against PostgreSQL:
+
+```powershell
+$env:POSTGRES_DSN = "postgresql://labuser:labpass@127.0.0.1:55432/labdb"
+.\.venv\Scripts\python.exe -m src.init_postgres
 .\.venv\Scripts\python.exe verify_mcp.py
 ```
 
@@ -336,7 +376,7 @@ gemini --allowed-mcp-server-names sqlite-lab --yolo -p "Use the sqlite-lab MCP s
 ## Safety Notes
 
 - Table and column names are never accepted directly into SQL unless they match the introspected schema allowlist.
-- User values are bound through SQLite parameters.
+- User values are bound through SQLite or PostgreSQL parameters.
 - Unsupported operators and aggregate metrics return clear `ValidationError` responses.
 - `limit` is bounded to `1..100` to avoid oversized outputs.
 - HTTP/SSE auth tokens are read from `MCP_AUTH_TOKEN`; no secrets are hardcoded.
@@ -348,15 +388,16 @@ gemini --allowed-mcp-server-names sqlite-lab --yolo -p "Use the sqlite-lab MCP s
 | FastMCP server starts | `python -m src.mcp_server`; `verify_mcp.py` imports and uses the server |
 | Clean project structure | `src/`, `tests/`, demo/verification scripts, `.gitignore` |
 | SQLite reproducible schema/data | `src/init_db.py`, `python -m src.init_db` |
-| Server/database separation | `src/mcp_server.py` delegates to `src/db.py` through repository shape |
-| `search` filters/order/pagination | `SQLiteRepository.search`, `tests/test_repository.py` |
-| `insert` returns inserted payload | `SQLiteRepository.insert`, `client_demo.py` |
-| `aggregate` count/avg/sum/min/max | `SQLiteRepository.aggregate`, parametrized pytest |
+| PostgreSQL reproducible schema/data | `src/init_postgres.py`, Docker PostgreSQL, `verify_postgres.py` |
+| Server/database separation | `src/mcp_server.py` delegates through `DatabaseRepository` |
+| `search` filters/order/pagination | `SQLiteRepository.search`, `PostgresRepository.search`, repository tests |
+| `insert` returns inserted payload | SQLite/PostgreSQL repository tests, `client_demo.py` |
+| `aggregate` count/avg/sum/min/max | SQLite parametrized pytest plus PostgreSQL integration tests |
 | Full schema resource | `schema://database`, `database_schema()` |
 | Per-table schema template | `schema://table/{table_name}`, `table_schema()` |
 | Reject invalid table/column | validation tests and structured MCP error response |
 | Reject bad operators/aggregates | validation tests and `verify_mcp.py` invalid call |
-| Safe parameterized SQL | bound values in `src/db.py`, identifier allowlisting |
+| Safe parameterized SQL | bound values in SQLite/PostgreSQL adapters, identifier allowlisting |
 | Tool discovery verified | `verify_mcp.py` lists `['search', 'insert', 'aggregate']` |
 | Successful tool calls demonstrated | MCP client calls in `client_demo.py`, `verify_mcp.py` |
 | Failing tool calls demonstrated | MCP client calls in `client_demo.py`, `verify_mcp.py` |
@@ -369,5 +410,5 @@ gemini --allowed-mcp-server-names sqlite-lab --yolo -p "Use the sqlite-lab MCP s
 | Bonus item | Evidence |
 |---|---|
 | HTTP/SSE auth | `MCP_AUTH_TOKEN`, `StaticTokenVerifier`, `verify_http_auth.py` |
-| SQLite/PostgreSQL shared interface | `src/repository.py` `DatabaseRepository` protocol and `PostgresRepository` boundary |
+| SQLite/PostgreSQL shared interface | `DatabaseRepository` protocol, working `SQLiteRepository`, working `PostgresRepository`, Docker-backed verification |
 | Extra polish | output limit, pagination, structured errors, pytest coverage, MCP discovery script |

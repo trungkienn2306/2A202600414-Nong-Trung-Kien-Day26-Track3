@@ -110,7 +110,7 @@ class SQLiteRepository:
                     f"SELECT * FROM {quote_identifier(table)} WHERE id = ?", (inserted_id,)
                 ).fetchone()
         except sqlite3.IntegrityError as error:
-            raise ValidationError(f"Insert violates database constraints: {error}") from error
+            raise ValidationError("Insert violates database constraints") from error
         return {
             "table": table,
             "inserted": dict(row) if row else {**insert_values, "id": inserted_id},

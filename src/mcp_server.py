@@ -9,6 +9,7 @@ from fastmcp import FastMCP
 
 from src.db import SQLiteRepository
 from src.init_db import DEFAULT_DB_PATH
+from src.repository import DatabaseRepository, PostgresRepository
 from src.validation import ValidationError
 
 
@@ -23,8 +24,17 @@ def create_auth_provider() -> Any | None:
     )
 
 
-mcp = FastMCP("SQLite Lab MCP Server", auth=create_auth_provider())
-repository = SQLiteRepository(os.getenv("SQLITE_DB_PATH", str(DEFAULT_DB_PATH)))
+mcp = FastMCP("Database Lab MCP Server", auth=create_auth_provider())
+
+
+def create_repository() -> DatabaseRepository:
+    postgres_dsn = os.getenv("POSTGRES_DSN")
+    if postgres_dsn:
+        return PostgresRepository(postgres_dsn)
+    return SQLiteRepository(os.getenv("SQLITE_DB_PATH", str(DEFAULT_DB_PATH)))
+
+
+repository = create_repository()
 
 
 def success(data: dict[str, Any]) -> dict[str, Any]:
@@ -33,6 +43,10 @@ def success(data: dict[str, Any]) -> dict[str, Any]:
 
 def failure(error: Exception) -> dict[str, Any]:
     return {"ok": False, "error": str(error), "error_type": type(error).__name__}
+
+
+def database_failure() -> dict[str, Any]:
+    return {"ok": False, "error": "Database request failed", "error_type": "DatabaseError"}
 
 
 @mcp.tool(name="search")
@@ -59,6 +73,8 @@ def search(
         )
     except ValidationError as error:
         return failure(error)
+    except Exception:
+        return database_failure()
 
 
 @mcp.tool(name="insert")
@@ -67,6 +83,8 @@ def insert(table: str, values: dict[str, Any]) -> dict[str, Any]:
         return success(repository.insert(table, values))
     except ValidationError as error:
         return failure(error)
+    except Exception:
+        return database_failure()
 
 
 @mcp.tool(name="aggregate")
@@ -81,11 +99,17 @@ def aggregate(
         return success(repository.aggregate(table, metric, column, filters, group_by))
     except ValidationError as error:
         return failure(error)
+    except Exception:
+        return database_failure()
 
 
 @mcp.resource("schema://database")
 def database_schema() -> str:
-    return json.dumps(repository.full_schema(), indent=2, ensure_ascii=False)
+    try:
+        payload = repository.full_schema()
+    except Exception:
+        payload = database_failure()
+    return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
 @mcp.resource("schema://table/{table_name}")
@@ -94,6 +118,8 @@ def table_schema(table_name: str) -> str:
         payload = {table_name: repository.table_schema(table_name)}
     except ValidationError as error:
         payload = failure(error)
+    except Exception:
+        payload = database_failure()
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 

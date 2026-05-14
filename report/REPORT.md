@@ -3,33 +3,39 @@
 Date: 2026-05-14  
 Project: `2A202600414-Nong-Trung-Kien-Day26-Track3`  
 Runtime: Windows 10, Python 3.12, local `.venv`  
-Server: FastMCP + SQLite
+Server: FastMCP + SQLite/PostgreSQL
 
 ## Executive Summary
 
-The lab implementation was run locally with both in-process MCP verification and a live authenticated HTTP transport check. The FastMCP server exposes the required MCP tools and resources, SQLite data is reproducible, valid calls succeed, invalid calls return structured errors, and the authenticated HTTP transport bonus was verified.
+The lab implementation was run locally with in-process MCP verification, a live authenticated HTTP transport check, and a live Docker PostgreSQL verification. The FastMCP server exposes the required MCP tools and resources, SQLite/PostgreSQL data is reproducible, valid calls succeed, invalid calls return structured errors, and the authenticated HTTP transport bonus was verified.
 
 Final status:
 
 | Area | Result |
 |---|---:|
-| Pytest | 15 passed |
-| Coverage | 81% |
+| Pytest | 20 passed |
+| Coverage | 85% |
 | FastMCP tool discovery | Passed |
 | MCP resource discovery | Passed |
 | In-process MCP client tool/resource calls | Passed |
 | Live authenticated HTTP tool/resource calls | Passed |
 | Invalid request handling | Passed |
 | Authenticated HTTP transport | Passed |
+| Live Docker PostgreSQL repository verification | Passed |
+| MCP verification on PostgreSQL backend | Passed |
 | Benchmark script | Passed |
 
 ## Commands Actually Run
 
 ```powershell
+$env:POSTGRES_DSN = "postgresql://labuser:labpass@127.0.0.1:55432/labdb"
 .\.venv\Scripts\python.exe -m pytest -q
 .\.venv\Scripts\python.exe -m pytest --cov=src --cov-report=term-missing
 .\.venv\Scripts\python.exe verify_mcp.py
 .\.venv\Scripts\python.exe client_demo.py
+.\.venv\Scripts\python.exe verify_postgres.py
+.\.venv\Scripts\python.exe -m src.init_postgres
+.\.venv\Scripts\python.exe verify_mcp.py
 $env:MCP_AUTH_TOKEN = "lab-demo-token"
 $env:MCP_HTTP_URL = "http://127.0.0.1:8017/mcp"
 .\.venv\Scripts\python.exe verify_http_auth.py
@@ -45,7 +51,7 @@ Raw outputs are saved in `report/raw/`.
 Result from `report/raw/pytest.txt`:
 
 ```text
-15 passed in 2.60s
+20 passed in 3.66s
 ```
 
 ### Coverage
@@ -53,8 +59,8 @@ Result from `report/raw/pytest.txt`:
 Result from `report/raw/coverage.txt`:
 
 ```text
-TOTAL 298 statements, 58 missed, 81% coverage
-15 passed in 3.80s
+TOTAL 445 statements, 68 missed, 85% coverage
+20 passed in 5.47s
 ```
 
 Coverage by main implementation files:
@@ -63,9 +69,11 @@ Coverage by main implementation files:
 |---|---:|
 | `src/db.py` | 94% |
 | `src/init_db.py` | 88% |
-| `src/mcp_server.py` | 66% |
+| `src/init_postgres.py` | 77% |
+| `src/mcp_server.py` | 60% |
+| `src/repository.py` | 92% |
 | `src/validation.py` | 89% |
-| Total | 81% |
+| Total | 85% |
 
 ### MCP Discovery
 
@@ -118,6 +126,21 @@ AUTH_HTTP_TABLE_SCHEMA_PREFIX: {'students': ...}
 
 This verifies that a real FastMCP HTTP client can authenticate, discover tools/resources, call successful tools, read a per-table schema resource, and receive a clear error for an invalid request.
 
+### Live PostgreSQL Bonus Verification
+
+Docker PostgreSQL was run locally on `127.0.0.1:55432` and verified with `POSTGRES_DSN=postgresql://labuser:labpass@127.0.0.1:55432/labdb`.
+
+Result from `report/raw/verify_postgres.txt` confirms direct repository support:
+
+```text
+POSTGRES_TABLES: ['courses', 'enrollments', 'students']
+POSTGRES_SEARCH_OK: {'table': 'students', ...}
+POSTGRES_INSERT_OK: {'table': 'students', 'inserted': ...}
+POSTGRES_AGGREGATE_OK: {'table': 'students', ...}
+```
+
+Result from `report/raw/verify_mcp_postgres.txt` confirms the same FastMCP tools/resources work when `src.mcp_server` selects `PostgresRepository` from `POSTGRES_DSN`.
+
 ## Benchmark Methodology
 
 Benchmark script: `report/benchmark.py`  
@@ -138,11 +161,11 @@ Method:
 
 | Operation | Iterations | Mean ms | Median ms | P95 ms | Ops/sec |
 |---|---:|---:|---:|---:|---:|
-| `repository.search` filtered/order/limit | 100 | 0.804 | 0.617 | 2.416 | 1243.81 |
-| `repository.aggregate avg(score) group_by cohort` | 100 | 1.263 | 0.935 | 2.910 | 791.48 |
-| `repository.full_schema()` | 100 | 1.994 | 1.256 | 4.399 | 501.52 |
-| `repository.table_schema("students")` | 100 | 0.346 | 0.281 | 0.419 | 2893.25 |
-| `repository.insert` student | 30 | 6.171 | 5.813 | 8.263 | 162.06 |
+| `repository.search` filtered/order/limit | 100 | 1.380 | 0.696 | 2.844 | 724.54 |
+| `repository.aggregate avg(score) group_by cohort` | 100 | 1.470 | 1.018 | 3.577 | 680.21 |
+| `repository.full_schema()` | 100 | 1.646 | 1.145 | 3.925 | 607.37 |
+| `repository.table_schema("students")` | 100 | 0.384 | 0.277 | 0.583 | 2602.29 |
+| `repository.insert` student | 30 | 7.618 | 7.316 | 9.149 | 131.28 |
 
 Observations:
 
@@ -155,10 +178,10 @@ Observations:
 
 | Operation | Iterations | Mean ms | Median ms | P95 ms | Ops/sec |
 |---|---:|---:|---:|---:|---:|
-| `client.list_tools()` | 30 | 0.575 | 0.495 | 0.989 | 1739.89 |
-| `client.read_resource("schema://database")` | 30 | 2.952 | 2.437 | 6.457 | 338.77 |
-| `client.call_tool("search")` | 30 | 3.225 | 3.081 | 4.107 | 310.05 |
-| `client.call_tool("aggregate")` | 30 | 3.362 | 3.327 | 4.776 | 297.41 |
+| `client.list_tools()` | 30 | 0.567 | 0.460 | 0.570 | 1762.87 |
+| `client.read_resource("schema://database")` | 30 | 3.589 | 3.146 | 5.536 | 278.62 |
+| `client.call_tool("search")` | 30 | 4.915 | 4.145 | 6.964 | 203.45 |
+| `client.call_tool("aggregate")` | 30 | 6.431 | 6.086 | 10.224 | 155.50 |
 
 Observations:
 
@@ -174,7 +197,8 @@ Observations:
 | FastMCP server starts successfully | Live HTTP server process used by `verify_http_auth.py`; in-process MCP checks via `verify_mcp.py` |
 | Clean project structure | `src/`, `tests/`, `report/`, verification scripts |
 | SQLite reproducible schema/data | `src/init_db.py`, benchmark recreates `data/benchmark.sqlite3` |
-| Server/database separation | MCP wrapper delegates to `SQLiteRepository` |
+| PostgreSQL reproducible schema/data | Docker PostgreSQL + `src/init_postgres.py` + `verify_postgres.py` |
+| Server/database separation | MCP wrapper delegates through `DatabaseRepository` to SQLite or PostgreSQL |
 | `search` filters/order/pagination | tests + `verify_mcp.py` + benchmark |
 | `insert` returns inserted payload | tests + `client_demo.py` + benchmark |
 | `aggregate` count/avg/sum/min/max | tests + `client_demo.py` + benchmark |
@@ -182,7 +206,7 @@ Observations:
 | Per-table schema template | `schema://table/students` verified by MCP client |
 | Invalid table/column rejected | tests + demo invalid table |
 | Unsupported operators/aggregates rejected | tests + demo bad aggregate |
-| Parameterized SQL | implementation in `src/db.py`; benchmark and tests pass |
+| Parameterized SQL | implementations in `src/db.py` and `src/repository.py`; benchmark and tests pass |
 | Tool discovery verified | `TOOLS: ['search', 'insert', 'aggregate']` |
 | Successful tool calls demonstrated | `client_demo.py`, `verify_mcp.py` |
 | Failing tool calls demonstrated | invalid table and bad aggregate responses |
@@ -195,7 +219,7 @@ Observations:
 | Bonus | Evidence |
 |---|---|
 | HTTP/SSE auth | `MCP_AUTH_TOKEN`, live HTTP auth verification with tool/resource calls, `verify_http_auth.py` |
-| SQLite + PostgreSQL shared interface | `src/repository.py` protocol and PostgreSQL boundary |
+| SQLite + PostgreSQL shared interface | `DatabaseRepository`, working `SQLiteRepository`, working `PostgresRepository`, Docker verification |
 | Extra polish | pagination limit, structured errors, coverage, benchmark report, raw artifacts |
 
 ## Artifact Index
@@ -210,10 +234,13 @@ Observations:
 | `report/raw/verify_mcp.txt` | Raw MCP discovery and tool/resource verification output |
 | `report/raw/client_demo.txt` | Raw FastMCP client demo output |
 | `report/raw/verify_http_auth.txt` | Raw authenticated HTTP verification output |
+| `report/raw/verify_postgres.txt` | Raw live PostgreSQL repository verification output |
+| `report/raw/verify_mcp_postgres.txt` | Raw MCP verification output using PostgreSQL backend |
+| `report/raw/pytest_postgres.txt` | Raw PostgreSQL integration test output |
 | `report/raw/http_server_stdout.txt` | HTTP server stdout during auth verification |
 | `report/raw/http_server_stderr.txt` | HTTP server stderr during auth verification |
 | `report/raw/benchmark_stdout.txt` | Raw benchmark stdout |
 
 ## Conclusion
 
-The implementation is ready for grading. It satisfies the base rubric through FastMCP tools/resources, reproducible SQLite data, validation/error handling, automated verification, in-process MCP client checks, and a live authenticated HTTP client verification. It also demonstrates the bonus path with authenticated HTTP transport, a shared database interface, output limits, tests, and benchmark artifacts.
+The implementation is ready for grading. It satisfies the base rubric through FastMCP tools/resources, reproducible SQLite data, validation/error handling, automated verification, in-process MCP client checks, and a live authenticated HTTP client verification. It also demonstrates the full bonus path with authenticated HTTP transport, working SQLite and PostgreSQL adapters behind a shared interface, output limits, tests, and benchmark artifacts.
